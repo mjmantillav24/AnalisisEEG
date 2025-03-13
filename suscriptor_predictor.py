@@ -1,8 +1,8 @@
 import pika
 import os
-import ast  
+import ast 
+import requests 
 from google.cloud import storage
-from modelo import iniciar
 from productorRespuesta import enviar_prediccion
 
 rabbit_host = '10.128.0.3'
@@ -11,6 +11,7 @@ rabbit_password = 'isis2503'
 exchange = 'monitoring_prediction'
 topic = 'eeg.request'
 
+COLAB_SERVER_URL = "https://e67d-35-245-50-18.ngrok-free.app/upload"
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(
     host=rabbit_host,
@@ -32,8 +33,22 @@ def descargar_archivo_gcs(gs_path):
     print(f"Archivo descargado desde GCS: {local_path}")
     return local_path
 
-
 print("procesando archivo para analizar...")
+
+def enviar_a_colab(local_file,id_examen):
+    files = {'file': open(local_file, 'rb')}
+    response = requests.post(COLAB_SERVER_URL, files=files)
+    response_json = response.json()
+    if response.status_code == 200:
+        resultado = response_json.get("mensaje", "Error en la predicción")
+        print(f" Predicción recibida: {resultado}")
+
+
+        prediccion = "{'id': '%s', 'resultado':'%s'}" % (id_examen, resultado)
+        enviar_prediccion(prediccion)
+    else:
+        print(f" Error en la respuesta del servidor Colab: {response.text}")
+
 
 def on_request(ch, method, properties, body):
     print("entro")
@@ -44,11 +59,10 @@ def on_request(ch, method, properties, body):
     file_path = data.get('path')
     print(f" Modelo recibió EEG: {file_path}")
     local_file = descargar_archivo_gcs(file_path)
-    resultado = iniciar(local_file)
-    print(f"  Predicción generada: {resultado}")
+    print(local_file)
 
-    enviar_prediccion(resultado)
-
+    enviar_a_colab(local_file,data.get('id'))
+    os.remove(local_file)
 
 channel.basic_consume(queue='monitoring_prediction', on_message_callback=on_request, auto_ack=True)
 print("Esperando mensajes")
