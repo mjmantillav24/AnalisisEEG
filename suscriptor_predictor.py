@@ -5,7 +5,6 @@ import requests
 import time
 from datetime import datetime 
 from google.cloud import storage
-from modelo import iniciar
 from productorRespuesta import enviar_prediccion
 
 
